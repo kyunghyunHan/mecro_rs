@@ -11,6 +11,8 @@ pub async fn example() -> Result<(), Box<dyn Error + Send + Sync>> {
     let driver = WebDriver::new("http://localhost:56095", caps).await?;
 
     // Google 홈페이지 방문
+    sleep(Duration::from_secs(1)).await;
+
     driver
         .goto("https://www.letskorail.com/ebizprd/EbizPrdTicketpr21100W_pr21110.do")
         .await?;
@@ -25,58 +27,92 @@ pub async fn example() -> Result<(), Box<dyn Error + Send + Sync>> {
 
     search_end_box.clear().await?;
     search_end_box.send_keys("서울").await?;
-    let year_select = driver.find_element(By::Id("s_year")).await?;
-    year_select.click().await?;
-
-    let option_2024 = driver
-        .find_element(By::XPath(r#".//option[@value='2024']"#))
+    // let year_select = driver.find_element(By::Id("s_year")).await?;
+    // year_select.click().await?;
+    driver
+        .execute("document.getElementById('s_year').value = '2024';", vec![])
         .await?;
-    option_2024.click().await?;
-
-    sleep(Duration::from_secs(1)).await;
-
-    let month_select = driver.find_element(By::Id("s_month")).await?;
-    month_select.click().await?;
-    let option_month = driver
-        .find_element(By::XPath(r#".//option[@value='10']"#))
+    driver
+        .execute(
+            "document.getElementById('s_year').dispatchEvent(new Event('change'));",
+            vec![],
+        )
         .await?;
-    option_month.click().await?;
-
-    let day_select = driver.find_element(By::Id("s_day")).await?;
-    day_select.click().await?;
-
-    let option_day = driver
-        .find_element(By::XPath(r#".//option[@value='20']"#))
+    driver
+        .execute("document.getElementById('s_month').value = '10';", vec![])
         .await?;
-    option_day.click().await?;
-    sleep(Duration::from_secs(1)).await;
-
-    let hour_select = driver.find_element(By::Id("s_hour")).await?;
-    hour_select.click().await?;
-    sleep(Duration::from_secs(1)).await;
-
-    let option_hour = driver
-        .find_element(By::XPath(r#".//option[@value='15']"#))
+    driver
+        .execute(
+            "document.getElementById('s_month').dispatchEvent(new Event('change'));",
+            vec![],
+        )
         .await?;
-
-    option_hour.click().await?;
-
-    sleep(Duration::from_secs(1)).await;
-
+    driver
+        .execute("document.getElementById('s_day').value = '20';", vec![])
+        .await?;
+    driver
+        .execute(
+            "document.getElementById('s_day').dispatchEvent(new Event('change'));",
+            vec![],
+        )
+        .await?;
+    driver
+        .execute("document.getElementById('s_hour').value = '15';", vec![])
+        .await?;
+    driver
+        .execute(
+            "document.getElementById('s_hour').dispatchEvent(new Event('change'));",
+            vec![],
+        )
+        .await?;
+    sleep(Duration::from_secs(3)).await;
     search_btn.click().await?;
 
-    // // 검색어가 입력된 후 약간의 대기 시간 추가
-    // sleep(Duration::from_secs(2)).await;
+    sleep(Duration::from_secs(3)).await;
+    //  let td_elements = driver.find_elements(By::XPath(r#"//td[contains(normalize-space(), '전주')]"#)).await?;
+    let td_elements = driver
+        .find_elements(By::XPath(
+            r#"//td[contains(normalize-space(), '전주') and contains(normalize-space(), '16:25')]"#,
+        ))
+        .await;
+    // 각 <td> 요소의 텍스트 가져오기
+    match td_elements {
+        Ok(tds) if !tds.is_empty() => {
+            for td in tds {
+                // 부모 <tr> 요소 찾기
+                let row = td.find_element(By::XPath("ancestor::tr")).await?;
 
-    // // 결과 로딩 대기
-    // driver.find_element(By::Css("div#search")).await?;
+                // 같은 행의 모든 <td> 요소 찾기
+                let all_td_elements = row.find_elements(By::XPath("./td")).await?;
 
-    // // 결과 페이지의 HTML 소스를 가져옴
-    // let html = driver.source().await?;
-    // println!("{html}");
-
-    // 브라우저 닫기
-    sleep(Duration::from_secs(20)).await;
+                // 모든 <td> 요소의 텍스트 출력
+                // for cell in all_td_elements {
+                //     let cell_text = cell.text().await;
+                //     println!("Cell text: {:?}", cell_text);
+                // }
+                for cell in all_td_elements {
+                    println!("{:?}", cell.text().await);
+                    // 버튼 요소를 찾기
+                    let reserve_button = cell
+                        .find_elements(By::XPath(".//a[img[contains(@alt,'입좌석묶음예약')]]"))
+                        .await?;
+                    println!("{}", reserve_button.len());
+                    // 버튼이 발견된 경우 클릭
+                    if let Some(button) = reserve_button.get(0) {
+                        button.click().await?;
+                        driver.switch_to().alert().accept().await.unwrap();
+                    } else {
+                        println!("No buttons found in this cell.");
+                    }
+                }
+            }
+            // break; // 전주와 16:25이 포함된 <td>를 찾았으므로 루프 종료
+        }
+        _ => {
+            println!("No matching <td> elements found. Retrying...");
+        }
+    }
+    sleep(Duration::from_secs(1)).await;
 
     driver.quit().await?;
 
